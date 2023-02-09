@@ -1,0 +1,261 @@
+<html>
+<meta charset="utf-8">
+
+<head>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <style>
+        * {
+            font-family: sans-serif
+        }
+
+        .legendLabel {
+            /* font-family: sans-serif; */
+            font-size: 12px;
+        }
+
+        h1 {
+            padding-top: 30px;
+            text-align: center;
+        }
+
+        h2 {
+            text-align: center
+        }
+
+        .flex-container {
+            display: flex;
+        }
+
+        .flex-child {
+            flex: 1;
+            /* border: 2px solid yellow; */
+        }
+
+        .flex-child:first-child {
+            margin-right: 20px;
+        }
+
+        .gridlines .domain {
+            display: none;
+        }
+
+        .gridlines line {
+            stroke: #393939;
+            stroke-opacity: .3;
+        }
+    </style>
+</head>
+<h1>Trees Planted in San Francisco (1973-2022)</h1>
+
+<div class='flex-container'>
+    <div id="flex-child">
+        <h2>Monthly Average</h2>
+        <svg id='linechartMonth' height="500" width="700"></svg>
+    </div>
+    <div id="flex-year">
+        <h2>Yearly Summary</h2>
+        <svg id='linechartYear' height="500" width="700"></svg>
+    </div>
+</div>
+
+<script>
+    const drawMonth = async function () {
+
+        let monthData = await d3.csv('linechart_month.csv', d3.autoType);
+        console.log(monthData);
+
+        const svgMonth = d3.select('svg#linechartMonth');
+        const width = svgMonth.attr('width');
+        const height = svgMonth.attr('height');
+        const margin = { top: 10, right: 100, bottom: 60, left: 30 };
+        const chartWidth = width - margin.left - margin.right;
+        const chartHeight = height - margin.top - margin.bottom;
+
+        // svgMonth.attr("transform", `translate(50)`);
+
+
+        let annotations = svgMonth.append("g").attr("id", "annotations")
+            .attr("transform", `translate(50)`);
+
+
+        let chartArea = svgMonth.append("g").attr("id", "lines")
+            .attr("transform", `translate(${margin.left + 50},${margin.top})`);
+
+        // CITATION: d3.group()
+        // https://www.geeksforgeeks.org/d3-js-group-method/
+        var groups = d3.group(monthData, d => d.decade);
+        console.log(groups)
+
+        const timeParser = d3.timeParse('%m');
+
+        monthData.forEach(d => {
+            d['month_d3'] = timeParser(d["month"]);
+        });
+
+        const dateExtent = d3.extent(monthData, d => d['month_d3'])
+        console.log(dateExtent);
+        const dateScale = d3.scaleTime().domain(dateExtent).range([0, chartWidth]);
+        let bottomAxis = d3.axisBottom(dateScale).tickFormat(d3.timeFormat("%B"));;
+
+
+        const yExtent = d3.extent(monthData, d => d['planted_avg_yr'])
+        const yScale = d3.scaleLinear().domain(yExtent).range([chartHeight, 0]);
+        let yAxis = d3.axisLeft(yScale);
+
+        // decades = d3.map(monthData, d => d.decade);
+        const colorScale = d3.scaleOrdinal().domain(groups.keys()).range(["#dc0a00", '#ff9f00', '#00d916', '#0ee7ff', '#0b7fff', '#b450ff']);
+
+        annotations.append("g")
+            .attr("transform", `translate(${margin.left},${chartHeight + margin.top + 10})`)
+            .call(bottomAxis);
+
+        annotations.append('g')
+            .attr("transform", `translate(${margin.left - 10},${margin.top})`)
+            .call(yAxis);
+
+        var lineGen = d3.line()
+            .x(d => dateScale(timeParser(d['month'])))
+            .y(d => yScale(d['planted_avg_yr']))
+            .curve(d3.curveMonotoneX)
+
+        // CITATION: this stack overflow post for realizing that d3.group() is an iterable not an array
+        // https://stackoverflow.com/questions/66054877/group-line-plotting-in-d3-with-d3-group
+
+        lines = chartArea.selectAll('g.decadeLine').data(groups)
+            .join('g')
+            .attr('class', 'decadeLine')
+            .style('stroke', d => colorScale(d[0]))
+
+        lines.append('path')
+            .data(groups)
+            .attr('class', 'path')
+            .attr('fill', 'none')
+            .attr('stroke-width', 2)
+            .attr('d', d => lineGen(Array.from(d.values())[1]));
+
+        console.log(lines);
+
+
+        // CITATION: legend
+        // https://d3-graph-gallery.com/graph/custom_legend.html
+        annotations.selectAll("legendBox")
+            .data(groups.keys())
+            .enter()
+            .append("rect")
+            .attr("x", chartWidth - margin.left)
+            .attr("y", function (d, i) { return margin.top + i * 20 })
+            .attr("width", 20)
+            .attr("height", 5)
+            .style("fill", function (d) { return colorScale(d) })
+
+        annotations.selectAll("legendLabel")
+            .data(groups.keys())
+            .enter()
+            .append("text")
+            .attr('class', 'legendLabel')
+            .attr("x", chartWidth)
+            .attr("y", function (d, i) { return margin.top + 5 + i * 20 })
+            .style("fill", "black")
+            .text(function (d) { return d })
+            .attr("text-anchor", "left")
+            .style("alignment-baseline", "middle")
+
+        // axes labels
+        svgMonth.append('text').text('Average # Trees Planted Per Year')
+            .attr("transform", "rotate(90)")
+            .attr('x', chartHeight - 330)
+            .attr('y', -20);
+
+        svgMonth.append('text').text('Month (Date) that the Tree was Planted')
+            // .attr("transform", "rotate(90)")
+            .attr('x', chartWidth / 2 - margin.left)
+            .attr('y', chartHeight + margin.bottom);
+    }
+    drawMonth();
+
+    const drawYear = async function () {
+        let yearData = await d3.csv('linechart_year.csv', d3.autoType);
+        console.log(yearData);
+        const svgYear = d3.select('svg#linechartYear')
+
+        const width = svgYear.attr('width');
+        const height = svgYear.attr('height');
+        const margin = { top: 10, right: 10, bottom: 50, left: 60 };
+        const chartWidth = width - margin.left - margin.right;
+        const chartHeight = height - margin.top - margin.bottom;
+
+
+        let annotationsYear = svgYear.append("g").attr("id", "annotationsYear")
+            .attr("transform", `translate(${margin.left - 50},${margin.top + 10})`)
+
+        yearParser = d3.timeParse('%Y')
+
+        yearData.forEach(d => {
+            d['year_d3'] = yearParser(d["year"]);
+        });
+
+        const yearExtent = d3.extent(yearData, d => d['year_d3'])
+        console.log(yearExtent)
+        const yearScale = d3.scaleTime().domain(yearExtent).range([0, chartWidth]);
+        let bottomAxis = d3.axisBottom(yearScale).tickFormat(d3.timeFormat("%Y"));
+        let bottomGridlines = d3.axisBottom(yearScale)
+            .tickSize(-chartHeight - 10)
+            .tickFormat("")
+
+
+        const countExtent = d3.extent(yearData, d => d['planted_count'])
+        const countScale = d3.scaleLinear().domain(countExtent).range([chartHeight, 0]);
+        let leftAxis = d3.axisLeft(countScale);
+        let leftGridlines = d3.axisLeft(countScale)
+            .tickSize(-chartWidth - 10)
+            .tickFormat("")
+
+        var areaGen = d3.area()
+            .x(d => yearScale(d['year_d3']))
+            .y1(d => countScale(d['planted_count']))
+            .y0(chartHeight)
+            .curve(d3.curveMonotoneX)
+
+        annotationsYear.append("path")
+            .datum(yearData)
+            .attr("d", areaGen)
+            .attr('class', 'area')
+            .attr("fill", "lightgreen")
+            // .attr("stroke", "green")
+            // .attr("stroke-width", 2)
+            .attr("transform", `translate(${margin.left},${margin.top})`)
+
+        annotationsYear.append("g")
+            .attr("transform", `translate(${margin.left},${chartHeight + margin.top})`)
+            .call(bottomAxis);
+
+        annotationsYear.append('g')
+            .attr("transform", `translate(${margin.left},${margin.top})`)
+            .call(leftAxis);
+
+
+        annotationsYear.append("g")
+            .attr("class", "y gridlines")
+            .attr("transform", `translate(${margin.left},${margin.top})`)
+            .call(leftGridlines);
+
+        annotationsYear.append("g")
+            .attr("class", "x gridlines")
+            .attr("transform", `translate(${margin.left},${chartHeight + margin.top})`)
+            .call(bottomGridlines);
+        // axes labels
+        svgYear.append('text').text('Total Count of Trees')
+            .attr("transform", "rotate(90)")
+            .attr('x', chartHeight - 250)
+            .attr('y', -20);
+
+        svgYear.append('text').text('Year (Date) that the Tree was Planted')
+            // .attr("transform", "rotate(90)")
+            .attr('x', chartWidth / 2 - margin.left-10)
+            .attr('y', chartHeight + margin.bottom+10);
+    }
+    drawYear();
+
+</script>
+
+</html>
